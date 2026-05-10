@@ -131,8 +131,62 @@ Warnings npm: 2 deprecation notices (uuid@8 transitive de node-pg-migrate, glob@
 - `node --check` en 9 archivos JS nuevos → 9/9 OK. ✅
 - Server bootea, sirve, y se detiene limpio (SIGTERM cierra pool). ✅
 
-## 2026-05-10 — Gate 3 Bloque D: Supermetrics
-*(pendiente)*
+## 2026-05-10 — Gate 3 Bloque D: Supermetrics (10 agentes restantes)
+
+### Archivos creados
+| archivo | rol |
+|---|---|
+| `server/integrations/supermetrics.js` | cliente Ruta A (`enterprise/v2/query`), audit-logged, helpers `rows`, `lastNDays` |
+| `server/routes/agents/03-tracking.js` | GA4 + GAds + Meta → `ops.snapshots_daily` (4 metrics × 3 sources × 7 días = 84 filas en mock) |
+| `server/routes/agents/04-market.js` | GA4 + GSC (queries) → `ops.snapshots_daily` |
+| `server/routes/agents/06-expected-value.js` | combina `ops.properties` + CPL de `ops.snapshots_daily` → `ml.expected_value` |
+| `server/routes/agents/08-portfolio.js` | spend GAds vs Meta del 7d → `audit.decisions` (target 60/40) |
+| `server/routes/agents/09-search.js` | top GSC queries → propuesta `expand_search_terms` en `audit.decisions` |
+| `server/routes/agents/10-acquisition.js` | inventario venta + CPL → propuesta scaling captación |
+| `server/routes/agents/11-remarketing.js` | GA4 sessions + Meta conv → propuesta de remarketing pool |
+| `server/routes/agents/12-campaigns.js` | snapshot READ-ONLY de campaigns GAds → `ops.campaigns` |
+| `server/routes/agents/13-search-terms.js` | regex de irrelevancia + cero conversiones → propuesta de negativos |
+| `server/routes/agents/14-bidding.js` | spend/CPL por source vs target → propuesta de bid moves (applied=false) |
+| `server/index.js` (modificado) | reemplazó stubs por las 10 rutas reales |
+
+### Validación end-to-end (sandbox, mock mode, secuencia 01→03→04→02→05→06→07→08→09→10→11→12→13→14)
+| agent | status | summary breve |
+|---|---|---|
+| 01 | mock | 128 props (109+19), 128 upsert |
+| 03 | mock | 84 snapshots GA4+GAds+Meta 7d, CPL 10.78 |
+| 04 | mock | GSC CTR 4.01% 7d |
+| 02 | ok | 128 reviewed, 0 issues |
+| 05 | ok | 99/118 scored (7 under, 87 fair, 5 over) |
+| 06 | mock | 118 EV scored, CPL=10.68 |
+| 07 | ok | 118 quality, avg 0.42 |
+| 08 | mock | `increase_google_ads` (GAds 48.1% vs target 60%) |
+| 09 | mock | `expand_search_terms` |
+| 10 | mock | `hold_acquisition` (19 venta, CPL 10.68) |
+| 11 | mock | `enable_remarketing_pool_high_intent` (656 sessions) |
+| 12 | mock | 5 GAds campaigns snapshotted |
+| 13 | mock | 7 terms reviewed, 3 negativos propuestos |
+| 14 | mock | 2 bid moves propuestos |
+
+### Estado de la DB tras la corrida
+| tabla | filas |
+|---|---|
+| ops.properties | 128 |
+| ops.snapshots_daily | 133 |
+| ops.campaigns | 5 |
+| ml.expected_value | 118 |
+| ml.pricing_score | 297 (3 runs acumuladas) |
+| ml.quality_score | 354 (3 runs acumuladas) |
+| audit.agent_runs | 22 (todos los runs lifecycle-tracked) |
+| audit.decisions | 9 (todas con `applied=false`) |
+| audit.api_calls | 0 (correcto: mock mode = sin HTTP externo) |
+
+### Reglas duras verificadas
+- ✅ READ-ONLY total: ningún agente muta Tokko, Google Ads o Meta
+- ✅ Agente 14 (Bidding) escribe propuestas, nunca aplica
+- ✅ Agente 12 (Campaigns) explícitamente READ-ONLY: solo lee y snapshot
+- ✅ `audit.decisions.applied = false` en las 9 filas
+- ✅ `node --check` en 12 archivos JS nuevos → 12/12 OK
+- ✅ Server boot OK con 10 rutas montadas (sin stubs)
 
 ## 2026-05-10 — Gate 3 Bloque E: scheduler
 *(pendiente)*

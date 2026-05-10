@@ -50,25 +50,18 @@ app.get('/api/agents', async (_req, res) => {
 
 app.use('/api/agent/01', require('./routes/agents/01-tokko-sync'));
 app.use('/api/agent/02', require('./routes/agents/02-inventory-normalizer'));
+app.use('/api/agent/03', require('./routes/agents/03-tracking'));
+app.use('/api/agent/04', require('./routes/agents/04-market'));
 app.use('/api/agent/05', require('./routes/agents/05-pricing'));
+app.use('/api/agent/06', require('./routes/agents/06-expected-value'));
 app.use('/api/agent/07', require('./routes/agents/07-quality'));
-
-const PENDING = ['03', '04', '06', '08', '09', '10', '11', '12', '13', '14'];
-const { AGENT_NAMES } = require('./routes/agents/_base');
-for (const id of PENDING) {
-  app.use(`/api/agent/${id}`, (_req, res) => {
-    res.status(200).json({
-      agent_id: id,
-      agent_name: AGENT_NAMES[id] || id,
-      status: 'mock',
-      last_run: new Date().toISOString(),
-      summary: 'Not implemented yet — pending Bloque D (Supermetrics integration).',
-      metrics: [],
-      alerts: [{ severity: 'low', message: 'Bloque D pendiente.' }],
-      raw: {},
-    });
-  });
-}
+app.use('/api/agent/08', require('./routes/agents/08-portfolio'));
+app.use('/api/agent/09', require('./routes/agents/09-search'));
+app.use('/api/agent/10', require('./routes/agents/10-acquisition'));
+app.use('/api/agent/11', require('./routes/agents/11-remarketing'));
+app.use('/api/agent/12', require('./routes/agents/12-campaigns'));
+app.use('/api/agent/13', require('./routes/agents/13-search-terms'));
+app.use('/api/agent/14', require('./routes/agents/14-bidding'));
 
 app.use((req, res) => {
   res.status(404).json({ error: 'not_found', path: req.path });
