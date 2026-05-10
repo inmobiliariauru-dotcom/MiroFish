@@ -55,7 +55,45 @@ Warnings npm: 2 deprecation notices (uuid@8 transitive de node-pg-migrate, glob@
 ---
 
 ## 2026-05-10 — Gate 3 Bloque B: DB
-*(pendiente)*
+
+### Postgres temporal en sandbox (Y1 aprobado)
+| qué | comando | resultado |
+|---|---|---|
+| dockerd levantado en background (sin systemd) | `dockerd > /tmp/dockerd.log 2>&1 &` | OK, socket `/var/run/docker.sock` |
+| Pull `postgres:16` | `docker compose -f piso-os-v3/docker-compose.yml --project-directory piso-os-v3 up -d` | OK |
+| Healthcheck | `docker exec piso_os_postgres pg_isready -U piso_app -d piso_os` | accepting |
+| Versión | `SELECT version();` | PostgreSQL 16.13 (Debian) |
+
+### Archivos creados
+| archivo | rol |
+|---|---|
+| `bin/migrate.js` | wrapper de `node-pg-migrate` con dotenv y `reset` mode |
+| `bin/seed.js` | corre todos los `db/seeds/*.sql` en orden |
+| `server/db.js` | `pg.Pool` size 10, `query()`, `tx()`, `ping()`, `shutdown()` |
+| `db/migrations/1700000000000_init-schemas.js` | crea schemas `ops`, `audit`, `ml` |
+| `db/migrations/1700000000001_ops-properties.js` | tabla + 4 índices (incl. GIN sobre raw) |
+| `db/migrations/1700000000002_ops-agents.js` | tabla |
+| `db/migrations/1700000000003_ops-campaigns.js` | tabla + índice por platform |
+| `db/migrations/1700000000004_ops-leads.js` | tabla + 4 índices, FK a campaigns y properties |
+| `db/migrations/1700000000005_ops-snapshots-daily.js` | tabla + PK compuesta jsonb + índice (source,date) |
+| `db/migrations/1700000000006_audit-agent-runs.js` | tabla + 2 índices |
+| `db/migrations/1700000000007_audit-decisions.js` | tabla + índice (agent_id,applied,created_at) |
+| `db/migrations/1700000000008_audit-api-calls.js` | tabla + índice (integration,called_at) |
+| `db/migrations/1700000000009_ml-expected-value.js` | tabla con FK + índice |
+| `db/migrations/1700000000010_ml-pricing-score.js` | tabla con FK + 2 índices |
+| `db/migrations/1700000000011_ml-quality-score.js` | tabla con FK + 2 índices, blockers TEXT[] |
+| `db/seeds/001-agents.sql` | INSERT idempotente de los 14 agentes |
+
+### Validación end-to-end
+| paso | comando | resultado |
+|---|---|---|
+| up all | `npm run db:migrate` | 12 migraciones aplicadas |
+| seed | `npm run db:seed` | 1 archivo, 14 filas en `ops.agents` |
+| down all + up all + seed | `npm run db:reset` | OK, 14 agentes finales |
+| schemas presentes | `pg_class` | `ops`, `audit`, `ml`, plus `pgmigrations` en `public` |
+| 11 tablas creadas | `pg_class` | properties, agents, campaigns, leads, snapshots_daily, agent_runs, decisions, api_calls, expected_value, pricing_score, quality_score |
+| 30 índices creados | `pg_indexes` | incluye GIN sobre `properties.raw`, PKs compuestas, FK indexes |
+| `node --check` en todos los JS | bash loop | 15/15 OK |
 
 ## 2026-05-10 — Gate 3 Bloque C: Tokko
 *(pendiente)*
