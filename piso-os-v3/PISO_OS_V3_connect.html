@@ -95,7 +95,12 @@
 // ============================================================================
 
 const PARAMS = new URLSearchParams(location.search);
-const API_BASE = (PARAMS.get('api') || 'http://localhost:8787').replace(/\/$/, '');
+// Default: same-origin when served over http(s) (preview / port-forward / npm run dev),
+// fallback to http://localhost:8787 when opened as file://.
+const API_BASE = (
+  PARAMS.get('api')
+  ?? (location.protocol.startsWith('http') ? '' : 'http://localhost:8787')
+).replace(/\/$/, '');
 
 // agentId -> endpoint path (under /api/agent/:id/...)
 const AGENTS = [

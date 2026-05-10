@@ -1,5 +1,6 @@
 /* PISO OS V3 — Express bootstrap. */
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 
@@ -8,16 +9,25 @@ const db = require('./db');
 
 const app = express();
 
+const HTML_PATH = path.join(__dirname, '..', 'PISO_OS_V3_connect.html');
+
 const corsAllow = (origin, cb) => {
   if (!origin) return cb(null, true);
   if (/^file:\/\//i.test(origin)) return cb(null, true);
   if (/^https?:\/\/localhost(:\d+)?$/i.test(origin)) return cb(null, true);
   if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(origin)) return cb(null, true);
+  // Allow Claude Code / IDE preview tunnels (the HTML is served same-origin so
+  // CORS is not strictly invoked, but /api/console/stream SSE may need it).
+  if (process.env.CORS_ALLOW_ANY === 'true') return cb(null, true);
   return cb(null, false);
 };
 
 app.use(cors({ origin: corsAllow }));
 app.use(express.json({ limit: '1mb' }));
+
+app.get('/', (_req, res) => res.sendFile(HTML_PATH));
+app.get('/index.html', (_req, res) => res.sendFile(HTML_PATH));
+app.get('/PISO_OS_V3_connect.html', (_req, res) => res.sendFile(HTML_PATH));
 
 app.get('/api/config', (_req, res) => {
   res.json({
