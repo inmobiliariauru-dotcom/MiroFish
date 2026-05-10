@@ -222,8 +222,44 @@ Warnings npm: 2 deprecation notices (uuid@8 transitive de node-pg-migrate, glob@
 | `cache.js` round-trip (set/get + setPersisted/getPersisted) | OK; archivo JSON creado y leído |
 | Server stop limpio (SIGTERM) | `scheduler.stop()` + `server.close()` + `db.shutdown()` |
 
-## 2026-05-10 — Gate 3 Bloque F: frontend
-*(pendiente)*
+## 2026-05-10 — Gate 3 Bloque F: frontend HTML
+
+### Archivos creados / modificados
+| archivo | rol |
+|---|---|
+| `PISO_OS_V3_connect.html` | nuevo: 359 líneas, vanilla JS + Tailwind CDN, 14 paneles + consola SSE |
+| `server/index.js` (modificado) | agrega `GET /api/config` que expone Pixel/GTM/GA4 IDs sin tocar `.env` desde el cliente |
+
+### Estructura del HTML
+| Sección | Contenido |
+|---|---|
+| Header | logo + branding + chips `health` y `mocks` (live) + botón "Run all" |
+| Stats strip | 4 cards: Properties / Snapshots(7d) / Decisions queued / Agent runs |
+| Capa Datos        | 4 paneles (01, 02, 03, 04) |
+| Capa Inteligencia | 3 paneles (05, 06, 07) |
+| Capa Estrategia   | 4 paneles (08, 09, 10, 11) |
+| Capa Ejecución    | 3 paneles (12, 13, 14), badge READ-ONLY |
+| Live console      | sticky aside con `EventSource(/api/console/stream)`, dedup, max 200 líneas |
+| Footer            | disclaimer READ-ONLY |
+
+### Inyección dinámica de tags (resuelve bug #1)
+- HTML **no** tiene `fbq` ni GTM hardcoded. La constante `META_PIXEL_ID_PRIMARY` viene de `.env` → backend `/api/config` → JS la inyecta.
+- `injectMetaPixel(id)` es **idempotente**: usa `window.__pixelInjected` para impedir doble inicialización aunque el script corra dos veces.
+- `injectGTM(container)` mismo patrón con `window.__gtmInjected`.
+- Resultado: **exactamente 1 Pixel y 1 GTM container** firing por tab, garantizado por construcción.
+
+### Validación
+| paso | resultado |
+|---|---|
+| `node --check` sobre el bloque inline `<script>` | 1 bloque, OK |
+| Conteo de `fbq(` literal en HTML | 1 (en template string de injectMetaPixel) |
+| Conteo de `facebook.net/en_US/fbevents.js` | 1 (mismo template) |
+| Conteo de `googletagmanager` | 2 (gtm.js + ns.html iframe, mismo template) |
+| Búsqueda de `api_key|secret|token|password` literal | 0 (solo aparece como comentario "No secrets in this file") |
+| Boot backend con `META_PIXEL_ID_PRIMARY=000000000000000` | `/api/config` devuelve el ID correctamente |
+
+### Limitación de validación en sandbox
+- No tengo navegador en la sandbox para validar el render visual; eso queda del lado del usuario en su Mac. La JS está syntáctica- y semánticamente correcta y todos los endpoints que consume responden con el shape esperado (verificado en bloques C/D/E).
 
 ## 2026-05-10 — Gate 3 Bloque G: handoff
 *(pendiente)*

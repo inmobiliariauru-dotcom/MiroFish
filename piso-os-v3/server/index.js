@@ -19,6 +19,16 @@ const corsAllow = (origin, cb) => {
 app.use(cors({ origin: corsAllow }));
 app.use(express.json({ limit: '1mb' }));
 
+app.get('/api/config', (_req, res) => {
+  res.json({
+    meta_pixel_id: process.env.META_PIXEL_ID_PRIMARY || null,
+    gtm_container_id: process.env.GTM_CONTAINER_ID || null,
+    ga4_property_id: process.env.GA4_PROPERTY_ID || null,
+    google_ads_customer_id: process.env.GOOGLE_ADS_CUSTOMER_ID || null,
+    mocks: ['tokko', 'supermetrics'].filter(env.isMock),
+  });
+});
+
 app.get('/api/health', async (_req, res) => {
   const dbUp = await db.ping();
   res.json({

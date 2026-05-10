@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PISO OS V3 · Piso Inmobiliario</title>
+  <!-- WARNING: only ONE Meta Pixel allowed (bug #1 from FIX_PLAN). Pixel + GTM are injected dynamically below from /api/config. -->
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0b1020; }
+    .glass { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+    .layer-datos        { color: #5eead4; }
+    .layer-inteligencia { color: #fcd34d; }
+    .layer-estrategia   { color: #c4b5fd; }
+    .layer-ejecucion    { color: #fda4af; }
+    .badge-ok      { background:#064e3b; color:#6ee7b7; }
+    .badge-mock    { background:#7c2d12; color:#fdba74; }
+    .badge-warning { background:#78350f; color:#fcd34d; }
+    .badge-error   { background:#7f1d1d; color:#fca5a5; }
+    .badge-idle    { background:#1f2937; color:#9ca3af; }
+    .alert-high { color:#fca5a5; }
+    .alert-med  { color:#fcd34d; }
+    .alert-low  { color:#9ca3af; }
+    .console-line { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    .console-run      { color:#a7f3d0; }
+    .console-call     { color:#bae6fd; }
+    .console-decision { color:#ddd6fe; }
+    .console-error    { color:#fca5a5; }
+  </style>
+</head>
+<body class="text-slate-200 min-h-screen">
+
+<!-- Header -->
+<header class="border-b border-slate-800 bg-slate-950/70 backdrop-blur sticky top-0 z-30">
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center gap-4">
+    <div class="text-2xl font-bold tracking-tight">PISO <span class="text-amber-400">OS</span> <span class="text-slate-400">V3</span></div>
+    <div class="text-xs text-slate-500 hidden md:block">Piso Inmobiliario · Montevideo · 14 agentes · 128 propiedades</div>
+    <div class="ml-auto flex items-center gap-2 text-xs">
+      <span id="health-badge" class="px-2 py-1 rounded badge-idle">health: ?</span>
+      <span id="mocks-badge"  class="px-2 py-1 rounded badge-idle">mocks: ?</span>
+      <button id="run-all" class="px-3 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30">Run all</button>
+    </div>
+  </div>
+</header>
+
+<!-- Stats strip -->
+<section class="max-w-7xl mx-auto px-6 py-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+  <div class="glass rounded-lg p-3"><div class="text-xs text-slate-500">Properties (Tokko)</div><div id="stat-properties" class="text-2xl font-bold">—</div></div>
+  <div class="glass rounded-lg p-3"><div class="text-xs text-slate-500">Snapshots (7d)</div><div id="stat-snapshots" class="text-2xl font-bold">—</div></div>
+  <div class="glass rounded-lg p-3"><div class="text-xs text-slate-500">Decisions queued</div><div id="stat-decisions" class="text-2xl font-bold">—</div></div>
+  <div class="glass rounded-lg p-3"><div class="text-xs text-slate-500">Agent runs (lifetime)</div><div id="stat-runs" class="text-2xl font-bold">—</div></div>
+</section>
+
+<!-- Main grid: 14 agents (left) + live console (right) -->
+<main class="max-w-7xl mx-auto px-6 pb-10 grid grid-cols-12 gap-4">
+  <section class="col-span-12 lg:col-span-8 space-y-6">
+    <div data-layer="datos">
+      <h2 class="text-sm uppercase tracking-widest layer-datos mb-2">Capa · Datos</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3" data-layer-grid="datos"></div>
+    </div>
+    <div data-layer="inteligencia">
+      <h2 class="text-sm uppercase tracking-widest layer-inteligencia mb-2">Capa · Inteligencia</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3" data-layer-grid="inteligencia"></div>
+    </div>
+    <div data-layer="estrategia">
+      <h2 class="text-sm uppercase tracking-widest layer-estrategia mb-2">Capa · Estrategia</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3" data-layer-grid="estrategia"></div>
+    </div>
+    <div data-layer="ejecucion">
+      <h2 class="text-sm uppercase tracking-widest layer-ejecucion mb-2">Capa · Ejecución <span class="text-slate-500 normal-case">(read-only)</span></h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3" data-layer-grid="ejecucion"></div>
+    </div>
+  </section>
+
+  <aside class="col-span-12 lg:col-span-4">
+    <div class="glass rounded-lg p-3 sticky top-20">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm uppercase tracking-widest text-slate-400">Live console</h2>
+        <span id="sse-badge" class="px-2 py-0.5 rounded text-xs badge-idle">disconnected</span>
+      </div>
+      <div id="console" class="space-y-1 max-h-[70vh] overflow-y-auto pr-1"></div>
+    </div>
+  </aside>
+</main>
+
+<footer class="max-w-7xl mx-auto px-6 py-4 text-xs text-slate-500 border-t border-slate-800">
+  READ-ONLY: this UI never mutates Tokko, Google Ads or Meta. Bidding/budget changes are queued in <code>audit.decisions</code> with <code>applied=false</code>.
+</footer>
+
+<script>
+// ============================================================================
+// PISO OS V3 — frontend logic. Vanilla JS, fetches localhost:8787 only.
+// No secrets in this file. IDs (Pixel/GTM) come from /api/config at runtime.
+// ============================================================================
+
+const PARAMS = new URLSearchParams(location.search);
+const API_BASE = (PARAMS.get('api') || 'http://localhost:8787').replace(/\/$/, '');
+
+// agentId -> endpoint path (under /api/agent/:id/...)
+const AGENTS = [
+  { id:'01', name:'Tokko Sync',                   layer:'datos',        path:'01/inventory'      },
+  { id:'02', name:'Inventory Normalizer',         layer:'datos',        path:'02/normalized'     },
+  { id:'03', name:'Tracking & Conversions',       layer:'datos',        path:'03/tracking'       },
+  { id:'04', name:'Market Intelligence',          layer:'datos',        path:'04/market'         },
+  { id:'05', name:'Pricing & Positioning',        layer:'inteligencia', path:'05/pricing'        },
+  { id:'06', name:'Expected Value',               layer:'inteligencia', path:'06/expected-value' },
+  { id:'07', name:'Commercial Quality',           layer:'inteligencia', path:'07/quality'        },
+  { id:'08', name:'Portfolio Allocation',         layer:'estrategia',   path:'08/portfolio'      },
+  { id:'09', name:'Search Strategy',              layer:'estrategia',   path:'09/search'         },
+  { id:'10', name:'Property Acquisition',         layer:'estrategia',   path:'10/acquisition'    },
+  { id:'11', name:'Remarketing & Audiences',      layer:'estrategia',   path:'11/remarketing'    },
+  { id:'12', name:'Campaign Builder (read-only)', layer:'ejecucion',    path:'12/campaigns'      },
+  { id:'13', name:'Negative Keywords',            layer:'ejecucion',    path:'13/search-terms'   },
+  { id:'14', name:'Bidding/Budget/Scaling',       layer:'ejecucion',    path:'14/bidding'        },
+];
+
+// ----- Tag injection (1 pixel + 1 GTM, dedup) ---------------------------------
+async function loadConfigAndInjectTags() {
+  let cfg = {};
+  try {
+    const r = await fetch(`${API_BASE}/api/config`);
+    cfg = r.ok ? await r.json() : {};
+  } catch (_) { /* offline */ }
+  injectMetaPixel(cfg.meta_pixel_id);
+  injectGTM(cfg.gtm_container_id);
+  return cfg;
+}
+
+function injectMetaPixel(id) {
+  if (!id || window.__pixelInjected) return;
+  window.__pixelInjected = true;
+  const s = document.createElement('script');
+  s.textContent =
+    "!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};" +
+    "if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;" +
+    "t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');" +
+    `fbq('init', '${id}'); fbq('track', 'PageView');`;
+  document.head.appendChild(s);
+  const ns = document.createElement('noscript');
+  ns.innerHTML = `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${id}&ev=PageView&noscript=1"/>`;
+  document.body.appendChild(ns);
+}
+
+function injectGTM(container) {
+  if (!container || window.__gtmInjected) return;
+  window.__gtmInjected = true;
+  const s = document.createElement('script');
+  s.textContent =
+    "(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});" +
+    "var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;" +
+    "j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);" +
+    `})(window,document,'script','dataLayer','${container}');`;
+  document.head.appendChild(s);
+  const ns = document.createElement('noscript');
+  ns.innerHTML = `<iframe src="https://www.googletagmanager.com/ns.html?id=${container}" height="0" width="0" style="display:none;visibility:hidden"></iframe>`;
+  document.body.insertBefore(ns, document.body.firstChild);
+}
+
+// ----- Utilities --------------------------------------------------------------
+function el(tag, attrs = {}, children = []) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v;
+    else if (k === 'html') e.innerHTML = v;
+    else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2), v);
+    else if (v != null) e.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) {
+    if (c == null) continue;
+    e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return e;
+}
+function fmtTime(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  return d.toLocaleTimeString();
+}
+function statusBadge(status) {
+  const cls = `badge-${status || 'idle'}`;
+  return el('span', { class: `px-2 py-0.5 rounded text-xs ${cls}` }, status || 'idle');
+}
+
+// ----- Agent panels -----------------------------------------------------------
+function renderAgentCards() {
+  for (const ag of AGENTS) {
+    const grid = document.querySelector(`[data-layer-grid="${ag.layer}"]`);
+    const card = el('div', { class: 'glass rounded-lg p-3', id: `card-${ag.id}` });
+    const head = el('div', { class: 'flex items-start gap-2 mb-2' }, [
+      el('div', { class: 'text-xs text-slate-500 mt-0.5' }, `#${ag.id}`),
+      el('div', { class: 'font-medium' }, ag.name),
+      el('div', { class: 'ml-auto', id: `badge-${ag.id}` }, statusBadge('idle')),
+    ]);
+    const summary = el('div', { class: 'text-xs text-slate-400 mb-2', id: `summary-${ag.id}` }, '—');
+    const metrics = el('div', { class: 'grid grid-cols-2 gap-1 mb-2', id: `metrics-${ag.id}` });
+    const alerts  = el('div', { class: 'space-y-1 mb-2', id: `alerts-${ag.id}` });
+    const footer  = el('div', { class: 'flex items-center gap-2 text-xs text-slate-500' }, [
+      el('span', { id: `lastrun-${ag.id}` }, '—'),
+      el('span', { class: 'ml-auto' }, ''),
+      el('button', {
+        class: 'px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs',
+        onclick: () => runAgent(ag),
+      }, 'Run'),
+    ]);
+    card.append(head, summary, metrics, alerts, footer);
+    grid.appendChild(card);
+  }
+}
+
+async function runAgent(ag) {
+  const badge = document.getElementById(`badge-${ag.id}`);
+  badge.replaceWith(statusBadge('running')); badge.id = ''; // mark transient
+  const placeholder = el('span', { class:'px-2 py-0.5 rounded text-xs badge-idle', id:`badge-${ag.id}` }, 'running…');
+  document.querySelector(`#card-${ag.id} .ml-auto`).appendChild(placeholder);
+
+  try {
+    const r = await fetch(`${API_BASE}/api/agent/${ag.path}`);
+    const data = await r.json();
+    paintAgent(ag, data);
+  } catch (err) {
+    paintAgent(ag, { agent_id: ag.id, agent_name: ag.name, status: 'error', summary: err.message, metrics: [], alerts: [{ severity: 'high', message: err.message }] });
+  }
+}
+
+function paintAgent(ag, data) {
+  const card = document.getElementById(`card-${ag.id}`);
+  if (!card) return;
+
+  // Replace badge
+  const badgeWrap = card.querySelector('div.flex.items-start .ml-auto');
+  badgeWrap.innerHTML = '';
+  badgeWrap.appendChild(statusBadge(data.status));
+
+  document.getElementById(`summary-${ag.id}`).textContent = data.summary || '—';
+
+  const metricsBox = document.getElementById(`metrics-${ag.id}`);
+  metricsBox.innerHTML = '';
+  for (const m of data.metrics || []) {
+    metricsBox.appendChild(el('div', { class: 'text-xs' }, [
+      el('div', { class: 'text-slate-500' }, m.label),
+      el('div', { class: 'text-slate-200 font-medium' }, String(m.value)),
+    ]));
+  }
+  if (!(data.metrics && data.metrics.length)) metricsBox.appendChild(el('div', { class: 'text-xs text-slate-600' }, 'no metrics'));
+
+  const alertsBox = document.getElementById(`alerts-${ag.id}`);
+  alertsBox.innerHTML = '';
+  for (const a of data.alerts || []) {
+    alertsBox.appendChild(el('div', { class: `text-xs alert-${a.severity || 'low'}` }, `· ${a.message}`));
+  }
+
+  document.getElementById(`lastrun-${ag.id}`).textContent = `last run ${fmtTime(data.last_run)}`;
+}
+
+// ----- Top-level fetches ------------------------------------------------------
+async function refreshHealth() {
+  try {
+    const r = await fetch(`${API_BASE}/api/health`);
+    const j = await r.json();
+    const hb = document.getElementById('health-badge');
+    hb.textContent = `health: ${j.db === 'up' ? 'ok' : 'db down'}`;
+    hb.className = `px-2 py-1 rounded ${j.db === 'up' ? 'badge-ok' : 'badge-error'}`;
+    const mb = document.getElementById('mocks-badge');
+    if (j.mocks && j.mocks.length) {
+      mb.textContent = `mocks: ${j.mocks.join(', ')}`;
+      mb.className = 'px-2 py-1 rounded badge-mock';
+    } else {
+      mb.textContent = 'mocks: none';
+      mb.className = 'px-2 py-1 rounded badge-ok';
+    }
+  } catch (err) {
+    const hb = document.getElementById('health-badge');
+    hb.textContent = `backend offline`;
+    hb.className = 'px-2 py-1 rounded badge-error';
+  }
+}
+
+async function refreshStats() {
+  try {
+    const r = await fetch(`${API_BASE}/api/console/recent`);
+    const j = await r.json();
+    document.getElementById('stat-runs').textContent = (j.runs || []).length;
+    document.getElementById('stat-decisions').textContent = (j.decisions || []).length;
+  } catch (_) { /* ignore */ }
+}
+
+async function refreshAgentsList() {
+  try {
+    const r = await fetch(`${API_BASE}/api/agents`);
+    const list = await r.json();
+    for (const a of list) {
+      const ag = AGENTS.find((x) => x.id === a.id);
+      if (!ag) continue;
+      if (a.last_run) {
+        paintAgent(ag, {
+          agent_id: a.id,
+          agent_name: a.name,
+          status: a.last_run.status || 'idle',
+          summary: a.last_run.summary || '—',
+          metrics: [],
+          alerts: [],
+          last_run: a.last_run.started_at,
+        });
+      }
+    }
+  } catch (_) { /* ignore */ }
+}
+
+async function runAll() {
+  for (const ag of AGENTS) await runAgent(ag);
+  refreshStats();
+}
+
+// ----- Live console (SSE) -----------------------------------------------------
+function connectConsole() {
+  const consoleBox = document.getElementById('console');
+  const sseBadge = document.getElementById('sse-badge');
+  let es;
+  function renderEvent(kind, data) {
+    const line = el('div', { class: `console-line console-${kind}` });
+    const t = fmtTime(data.started_at || data.called_at || data.created_at || Date.now());
+    if (kind === 'run')      line.textContent = `[${t}] run    ${data.agent_id} ${data.status}: ${data.summary || ''}`;
+    if (kind === 'call')     line.textContent = `[${t}] api    ${data.integration} ${data.method} ${data.endpoint} → ${data.status_code} (${data.duration_ms}ms)`;
+    if (kind === 'decision') line.textContent = `[${t}] decide ${data.agent_id} → ${data.decision}`;
+    if (kind === 'error')    line.textContent = `[${t}] ERROR  ${data.message}`;
+    consoleBox.insertBefore(line, consoleBox.firstChild);
+    while (consoleBox.children.length > 200) consoleBox.removeChild(consoleBox.lastChild);
+  }
+  function open() {
+    es = new EventSource(`${API_BASE}/api/console/stream`);
+    es.onopen = () => { sseBadge.textContent = 'live'; sseBadge.className = 'px-2 py-0.5 rounded text-xs badge-ok'; };
+    es.onerror = () => { sseBadge.textContent = 'reconnecting…'; sseBadge.className = 'px-2 py-0.5 rounded text-xs badge-warning'; };
+    es.addEventListener('agent_run', (e) => renderEvent('run', JSON.parse(e.data)));
+    es.addEventListener('api_call',  (e) => renderEvent('call', JSON.parse(e.data)));
+    es.addEventListener('decision',  (e) => renderEvent('decision', JSON.parse(e.data)));
+    es.addEventListener('error',     (e) => { try { renderEvent('error', JSON.parse(e.data)); } catch (_) {} });
+  }
+  open();
+}
+
+// ----- Boot -------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', async () => {
+  renderAgentCards();
+  document.getElementById('run-all').addEventListener('click', runAll);
+
+  await loadConfigAndInjectTags();
+  await refreshHealth();
+  await refreshAgentsList();
+  await refreshStats();
+  connectConsole();
+
+  setInterval(refreshHealth, 10_000);
+  setInterval(refreshStats, 15_000);
+});
+</script>
+
+</body>
+</html>
