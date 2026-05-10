@@ -262,4 +262,43 @@ Warnings npm: 2 deprecation notices (uuid@8 transitive de node-pg-migrate, glob@
 - No tengo navegador en la sandbox para validar el render visual; eso queda del lado del usuario en su Mac. La JS está syntáctica- y semánticamente correcta y todos los endpoints que consume responden con el shape esperado (verificado en bloques C/D/E).
 
 ## 2026-05-10 — Gate 3 Bloque G: handoff
-*(pendiente)*
+
+### Archivos creados
+| archivo | rol |
+|---|---|
+| `README_RUN.md` | guía completa de setup + verificación + troubleshooting + arquitectura |
+| `FIX_LOG.md` | bugs resueltos (3 Pixels, GTM dup, secrets en frontend), constraints compliance, decisiones diferidas, checklist humano |
+| `INSTALL_LOG.md` (cierre) | este bloque |
+
+### Cierre del scaffold
+- Branch: `claude/setup-piso-os-v3-5Z6nv`
+- PR: #1 (draft — el usuario lo abre cuando valide en su Mac)
+- Subdir: `piso-os-v3/` (cero archivos modificados fuera de él)
+- Total commits: 7 (uno por bloque + el inicial de scaffold)
+- npm deps: 159 paquetes, 9 directos (7 deps + 2 devDeps)
+- Migraciones DB: 12 (idempotentes, reversibles)
+- Endpoints: 17 (`/api/health`, `/api/config`, `/api/agents`, 14 agentes, 3 console)
+- Cron jobs: 14
+- Líneas totales `piso-os-v3/**` (sin node_modules ni package-lock):
+  - JS server: ~1,000
+  - HTML frontend: 359
+  - SQL migrations: ~250
+  - Docs: ~750
+
+### Validación end-to-end (sandbox, mock mode, todo el sistema)
+- ✅ Postgres 16 corre (Docker temporal, port 5432)
+- ✅ Las 12 migraciones se aplican sin error
+- ✅ Seed inserta los 14 agentes
+- ✅ Backend bootea, scheduler registra 14 jobs, mocks detectados (tokko, supermetrics)
+- ✅ `/api/health` → `db: up`
+- ✅ Los 14 agentes responden con shape estandarizado
+- ✅ Persistencia en `ops.properties` (128), `ops.snapshots_daily` (133), `ops.campaigns` (5), `ml.expected_value` (118), `ml.pricing_score` (297), `ml.quality_score` (354)
+- ✅ `audit.agent_runs` (22), `audit.decisions` (9, todas con `applied=false`), `audit.api_calls` (0 en mock)
+- ✅ SSE `/api/console/stream` emite eventos backfill + tick + keepalive
+- ✅ HTML pasa `node --check`, sin secrets, 1 sólo Pixel inyectable, 1 sólo GTM inyectable
+
+### Lo que no validé en sandbox (queda del lado del usuario)
+- Render visual del HTML en browser (no hay browser en sandbox)
+- Llamadas reales a Tokko / Supermetrics (sin credenciales)
+- Migraciones contra el Postgres del usuario (corren contra el temporal)
+- Cron schedules en producción (corrieron solo durante el smoke test del scheduler)
