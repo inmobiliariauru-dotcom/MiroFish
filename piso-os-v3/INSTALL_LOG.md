@@ -302,3 +302,44 @@ Warnings npm: 2 deprecation notices (uuid@8 transitive de node-pg-migrate, glob@
 - Llamadas reales a Tokko / Supermetrics (sin credenciales)
 - Migraciones contra el Postgres del usuario (corren contra el temporal)
 - Cron schedules en producción (corrieron solo durante el smoke test del scheduler)
+
+---
+
+## 2026-05-10 — Bloque H: Salboo Excel ingestion
+
+### Trigger
+- Tokko REST devolvió **403 "Host not in allowlist"** desde la sandbox: la key del usuario es válida pero Salboo allowlistea por IP. La sandbox no está allowlistada, su Mac sí (probablemente).
+- El usuario aclaró que el flujo real de inventario es: **Excel diario de Salboo a las 21:00**.
+
+### Archivos creados / modificados
+| archivo | rol |
+|---|---|
+| `server/integrations/salboo-excel.js` | nuevo: parser dual-format (Meta Commerce Catalog + standard fallback), header normalization (accent/case-insensitive), price parser ("29000 UYU" / "2200 USD"), file archival a `data/processed/<timestamp>/` |
+| `server/routes/agents/01-tokko-sync.js` | reescrito: prioridad inbox.xlsx → tokko REST → mock. Upsert con `id_tokko` real. |
+| `data/inbox/.gitkeep`, `data/processed/.gitkeep` | placeholders del flujo |
+| `.gitignore` | agrega `data/inbox/*.xlsx`, `data/processed/` |
+| `.env.example` | documenta `SALBOO_INBOX_DIR`, `SALBOO_PROCESSED_DIR`; agrega `META_AD_ACCOUNT_ID=act_1333695193647738`, `META_BUSINESS_ID=1524937811797912` como comments |
+| `README_RUN.md` | nueva sección §4 con flujo de Excel diario |
+| `package.json` | nueva dep: `exceljs ^4.4.0` |
+
+### Validación end-to-end con archivo real
+| paso | resultado |
+|---|---|
+| Detección de formato | `meta_catalog` ✅ (headers `home_listing_id`, `availability`, `address.region`, `image[N].url`, `num_beds`, `num_baths`) |
+| Properties parseadas | **115** |
+| Distribución | 94 alquiler + 21 venta |
+| Properties sin foto | **0** |
+| Properties sin precio | **0** |
+| Upsert a `ops.properties` | 115/115 con `id_tokko` real (e.g. `6815841`, `7462072`, `4130059`) |
+| Archive | archivo movido a `data/processed/2026-05-10T17-03-09/salboo_20260510.xlsx` |
+| Agent shape | `status:ok`, `summary:[salboo_excel:...] 115 props (94 alq, 21 ven), 115 upserted, archived.` |
+| Tokko REST fallback | NO se llama cuando hay Excel (correcto, evita el 403) |
+| Audit trail | `audit.agent_runs` registra el run, `audit.api_calls` queda en 0 (no hubo HTTP externo) |
+
+### Discrepancias notadas (no son bugs)
+- El usuario reportaba 109+19=128, el archivo del día tenía 94+21=115. Diferencia de 13 propiedades. Probablemente reservas, ocultos, o despublicados ese día. No es error del parser.
+- El campo `type` (Apartamento/Casa/etc.) queda `null` para todas las filas porque `name` solo dice "ALQUILER en Uruguay | Montevideo | Prado" sin la palabra del tipo. El tipo está en la `description`. **Mejora futura**: extraerlo de la description con regex.
+
+### Acciones humanas pendientes (actualizadas)
+- Rotar la API key de Tokko (`f66a028a39eeee03b18f2f4c310ffdb4dbe75aae`) ya que quedó en el historial de chat. No urgente porque el canal real es el Excel, pero recomendable.
+- Confirmar con Salboo si quieren agregar la IP del servidor productivo al allowlist; si sí, la Ruta API queda como redundancia/respaldo.

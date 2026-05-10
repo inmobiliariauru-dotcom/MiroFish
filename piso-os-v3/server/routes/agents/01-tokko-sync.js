@@ -1,4 +1,13 @@
-/* Agent 01 — Tokko Sync. Reads Tokko, upserts ops.properties. */
+/* Agent 01 — Inventory Sync (Salboo Excel + Tokko REST fallback).
+ *
+ * Read-source priority:
+ *   1. SALBOO_INBOX_DIR has an .xlsx → parse + upsert + archive (preferred path,
+ *      because Tokko REST is IP-allowlisted and Salboo daily Excel is canonical).
+ *   2. TOKKO_API_KEY is set → call Tokko REST.
+ *   3. Otherwise → mock 128 properties.
+ *
+ * Always writes ops.properties and audit.api_calls.
+ */
 const express = require('express');
 const router = express.Router();
 
@@ -6,6 +15,7 @@ const { runAgent } = require('./_base');
 const { isMock } = require('../../env');
 const { query } = require('../../db');
 const tokko = require('../../integrations/tokko');
+const salboo = require('../../integrations/salboo-excel');
 
 const AGENT_ID = '01';
 
@@ -59,13 +69,11 @@ function normalizeFromTokko(p) {
     status: p.status || 'activa',
     photos: p.photos || [],
     description: p.description || '',
-    raw_source: p,
   };
 }
 
 async function upsertProperty(p) {
   const idTokko = String(p.id);
-  const raw = { ...p, raw_source: undefined };
   await query(
     `INSERT INTO ops.properties
        (id_tokko, operation, type, neighborhood, rooms, price_uyu, price_usd, status, raw, synced_at, updated_at)
@@ -81,39 +89,86 @@ async function upsertProperty(p) {
        raw = EXCLUDED.raw,
        synced_at = EXCLUDED.synced_at,
        updated_at = now()`,
-    [idTokko, p.operation, p.type, p.neighborhood, p.rooms, p.price_uyu, p.price_usd, p.status, raw]
+    [idTokko, p.operation, p.type, p.neighborhood, p.rooms, p.price_uyu, p.price_usd, p.status, p]
   );
 }
 
 router.get('/inventory', async (_req, res) => {
   const out = await runAgent(AGENT_ID, async ({ dbUp }) => {
-    const mock = isMock('tokko');
-    let properties;
-    if (mock) {
-      properties = mockProperties();
-    } else {
-      const payload = await tokko.listProperties({ limit: 200 });
-      properties = tokko.asArray(payload).map(normalizeFromTokko);
+    let source = 'mock';
+    let properties = [];
+    let archived = null;
+    const alerts = [];
+
+    // 1. Try Salboo Excel from inbox.
+    const drop = salboo.latestFile();
+    if (drop) {
+      try {
+        const parsed = await salboo.parseFile(drop.path);
+        if (parsed.properties.length > 0) {
+          properties = parsed.properties;
+          source = `salboo_excel:${drop.name}`;
+        } else {
+          alerts.push({ severity: 'med', message: `Excel "${drop.name}" parsed but no rows matched. Check headers.` });
+        }
+      } catch (err) {
+        alerts.push({ severity: 'high', message: `Failed to parse ${drop.name}: ${err.message}` });
+      }
     }
+
+    // 2. Fallback to Tokko REST.
+    if (properties.length === 0 && !isMock('tokko')) {
+      try {
+        const payload = await tokko.listProperties({ limit: 200 });
+        properties = tokko.asArray(payload).map(normalizeFromTokko);
+        source = 'tokko_api';
+      } catch (err) {
+        alerts.push({ severity: 'high', message: `Tokko API: ${err.message}` });
+      }
+    }
+
+    // 3. Mock fallback.
+    if (properties.length === 0) {
+      properties = mockProperties();
+      source = 'mock';
+    }
+
     let upserted = 0;
     if (dbUp) {
       for (const p of properties) {
         try { await upsertProperty(p); upserted++; } catch (_) { /* skip */ }
       }
     }
+
+    // Archive the Excel only after successful upserts (>= 80% to avoid losing data on partial fail).
+    if (drop && source.startsWith('salboo_excel') && upserted >= properties.length * 0.8) {
+      try { archived = salboo.archiveFile(drop.path); }
+      catch (err) { alerts.push({ severity: 'low', message: `Could not archive ${drop.name}: ${err.message}` }); }
+    }
+
     const alquiler = properties.filter((p) => p.operation === 'alquiler').length;
     const venta = properties.filter((p) => p.operation === 'venta').length;
+
+    let status;
+    if (source === 'mock') status = 'mock';
+    else if (source.startsWith('salboo_excel')) status = 'ok';
+    else if (source === 'tokko_api') status = 'ok';
+    else status = 'warning';
+
     return {
-      status: mock ? 'mock' : (dbUp ? 'ok' : 'warning'),
-      summary: `Tokko sync: ${properties.length} properties (${alquiler} alquiler, ${venta} venta), ${upserted} upserted`,
+      status,
+      summary: `[${source}] ${properties.length} props (${alquiler} alq, ${venta} ven), ${upserted} upserted${archived ? ', archived' : ''}.`,
       metrics: [
+        { label: 'Source', value: source },
         { label: 'Total', value: String(properties.length) },
         { label: 'Alquiler', value: String(alquiler) },
         { label: 'Venta', value: String(venta) },
         { label: 'Upserted', value: String(upserted) },
       ],
-      alerts: mock ? [{ severity: 'med', message: 'MOCK mode: set TOKKO_API_KEY to use real Tokko data.' }] : [],
-      raw: { sample: properties.slice(0, 3) },
+      alerts: source === 'mock'
+        ? [...alerts, { severity: 'med', message: 'MOCK: drop xlsx into data/inbox/ or set TOKKO_API_KEY.' }]
+        : alerts,
+      raw: { source, file: drop && drop.name, archived, sample: properties.slice(0, 3) },
     };
   });
   res.json(out);

@@ -109,7 +109,33 @@ Si querés correr **sin** scheduler (útil para dev), exportá `SCHEDULER=off`:
 SCHEDULER=off npm run dev
 ```
 
-### 4. Frontend
+### 4. Inventario diario via Salboo Excel
+
+Salboo allowlistea por IP, así que la API REST de Tokko solo funciona desde tu Mac (no desde servidores externos). El canal de inventario canónico es el **Excel diario**:
+
+1. Cada día a las 21:00 (o cuando exportes), bajá el listado de Salboo en formato XLSX (mismo formato que el Facebook Catalog feed: `home_listing_id`, `availability`, `address.region`, `image[N].url`, `num_beds`, `num_baths`, `price`, etc.).
+2. Pegá el archivo en `piso-os-v3/data/inbox/`.
+3. El agente 01 lo procesa automáticamente en la próxima corrida (cron `*/30 * * * *`) o vía:
+
+   ```bash
+   curl http://localhost:8787/api/agent/01/inventory
+   ```
+
+4. Tras el upsert (`ops.properties`), el archivo se mueve a `data/processed/<timestamp>/<nombre>.xlsx` para auditoría.
+
+**Prioridad de fuentes** dentro del agente 01:
+1. `data/inbox/*.xlsx` si existe → Excel (preferido).
+2. `TOKKO_API_KEY` definido → Tokko REST (solo desde IP allowlistada).
+3. Sin nada → mock.
+
+Override del directorio:
+
+```ini
+SALBOO_INBOX_DIR=data/inbox
+SALBOO_PROCESSED_DIR=data/processed
+```
+
+### 5. Frontend
 
 El HTML es completamente estático. Abrilo en el browser:
 

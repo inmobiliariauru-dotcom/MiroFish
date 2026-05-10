@@ -28,3 +28,11 @@ server/cache/*.json
 
 # Postgres data volume (only if user opts into local docker-compose)
 .pgdata/
+
+# Salboo Excel drops (real inventory data)
+data/inbox/*.xlsx
+data/inbox/*.xls
+data/inbox/*.csv
+data/processed/
+!data/inbox/.gitkeep
+!data/processed/.gitkeep
