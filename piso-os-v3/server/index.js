@@ -63,6 +63,8 @@ app.use('/api/agent/12', require('./routes/agents/12-campaigns'));
 app.use('/api/agent/13', require('./routes/agents/13-search-terms'));
 app.use('/api/agent/14', require('./routes/agents/14-bidding'));
 
+app.use('/api/console', require('./routes/console'));
+
 app.use((req, res) => {
   res.status(404).json({ error: 'not_found', path: req.path });
 });
@@ -70,11 +72,16 @@ app.use((req, res) => {
 if (require.main === module) {
   try {
     const boot = env.bootValidate();
+    const scheduler = require('./scheduler');
     const server = app.listen(env.port, () => {
       console.log(`[piso-os-v3] backend listening on http://localhost:${env.port}`);
       console.log(`[piso-os-v3] mocks: ${boot.mocks.join(', ') || 'none'}`);
+      scheduler.start();
     });
-    const stop = () => server.close(() => db.shutdown().then(() => process.exit(0)));
+    const stop = () => {
+      scheduler.stop();
+      server.close(() => db.shutdown().then(() => process.exit(0)));
+    };
     process.on('SIGTERM', stop);
     process.on('SIGINT', stop);
   } catch (err) {

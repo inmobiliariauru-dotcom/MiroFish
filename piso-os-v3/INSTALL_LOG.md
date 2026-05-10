@@ -188,8 +188,39 @@ Warnings npm: 2 deprecation notices (uuid@8 transitive de node-pg-migrate, glob@
 - ✅ `node --check` en 12 archivos JS nuevos → 12/12 OK
 - ✅ Server boot OK con 10 rutas montadas (sin stubs)
 
-## 2026-05-10 — Gate 3 Bloque E: scheduler
-*(pendiente)*
+## 2026-05-10 — Gate 3 Bloque E: scheduler + cache + console SSE
+
+### Archivos creados
+| archivo | rol |
+|---|---|
+| `server/cache.js` | wrapper de `node-cache` (memoria) + persistencia opcional a `server/cache/<key>.json` con TTL |
+| `server/scheduler.js` | 14 cron jobs registrados con `node-cron`, llaman `localhost:8787/api/agent/...` para reusar pipeline + audit. Desactivable con `SCHEDULER=off` |
+| `server/routes/console.js` | `/api/console/recent` (snapshot último 50 de runs/calls/decisions), `/api/console/jobs` (lista cron), `/api/console/stream` (SSE con backfill + tick 5s) |
+| `server/index.js` (modificado) | monta `/api/console`, arranca scheduler tras `app.listen`, lo detiene en SIGTERM/SIGINT |
+
+### Schedule registrado
+| cron | path | rationale |
+|---|---|---|
+| `*/30 * * * *` | 01/inventory | Tokko cada 30 min |
+| `5,35 * * * *` | 02/normalized | tras sync |
+| `5 * * * *` | 03/tracking | SM hourly, escalonado |
+| `10 * * * *` | 04/market | SM hourly, escalonado |
+| `15 * * * *` | 12/campaigns | SM hourly, escalonado |
+| `20 */6 * * *` | 05/pricing | scoring 6h |
+| `25 */6 * * *` | 06/expected-value | scoring 6h |
+| `30 */6 * * *` | 07/quality | scoring 6h |
+| `40-45 * * * *` | 08, 09, 10, 11, 13, 14 | estratégicos hourly |
+
+### Validación end-to-end
+| paso | resultado |
+|---|---|
+| `node --check` × 4 archivos nuevos/modificados | 4/4 OK |
+| Boot log: `[scheduler] 14 cron job(s) registered` | ✅ |
+| `GET /api/console/jobs` | devuelve 14 (expr, path) |
+| `GET /api/console/recent` | `{runs:22, calls:0, decisions:9}` |
+| `GET /api/console/stream` (curl SSE 6s) | recibe backfill `event: agent_run` con data JSON + keepalives | 
+| `cache.js` round-trip (set/get + setPersisted/getPersisted) | OK; archivo JSON creado y leído |
+| Server stop limpio (SIGTERM) | `scheduler.stop()` + `server.close()` + `db.shutdown()` |
 
 ## 2026-05-10 — Gate 3 Bloque F: frontend
 *(pendiente)*
