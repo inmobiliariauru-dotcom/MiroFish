@@ -115,7 +115,7 @@ Salboo allowlistea por IP, así que la API REST de Tokko solo funciona desde tu 
 
 1. Cada día a las 21:00 (o cuando exportes), bajá el listado de Salboo en formato XLSX (mismo formato que el Facebook Catalog feed: `home_listing_id`, `availability`, `address.region`, `image[N].url`, `num_beds`, `num_baths`, `price`, etc.).
 2. Pegá el archivo en `piso-os-v3/data/inbox/`.
-3. El agente 01 lo procesa automáticamente en la próxima corrida (cron `*/30 * * * *`) o vía:
+3. El agente 01 lo procesa automáticamente en la corrida diaria (cron `5 21 * * *`) o ad-hoc vía:
 
    ```bash
    curl http://localhost:8787/api/agent/01/inventory
@@ -221,8 +221,8 @@ Todos los endpoints de agente devuelven el shape estandarizado:
 
 | Agente | Schedule (cron) |
 |---|---|
-| 01 Tokko Sync | `*/30 * * * *` |
-| 02 Normalizer | `5,35 * * * *` |
+| 01 Salboo Sync | `5 21 * * *` (daily 21:05) |
+| 02 Normalizer | `10 21 * * *` y `0 13 * * *` |
 | 03 Tracking | `5 * * * *` |
 | 04 Market | `10 * * * *` |
 | 12 Campaigns | `15 * * * *` |

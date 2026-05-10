@@ -9,9 +9,11 @@ const PORT = parseInt(process.env.PORT, 10) || 8787;
 const BASE = `http://127.0.0.1:${PORT}`;
 
 const SCHEDULES = [
-  // ---- Tokko inventory: every 30 min ----
-  { expr: '*/30 * * * *', path: '01/inventory' },
-  { expr: '5,35 * * * *', path: '02/normalized' },
+  // ---- Salboo inventory: once per day at 21:05 (after the 21:00 export drop) ----
+  { expr: '5 21 * * *', path: '01/inventory' },
+  // Run normalizer 5 min after each Salboo ingest, plus once midday for safety.
+  { expr: '10 21 * * *', path: '02/normalized' },
+  { expr: '0 13 * * *',  path: '02/normalized' },
 
   // ---- Supermetrics pulls: every 60 min, staggered ----
   { expr: '5 * * * *',  path: '03/tracking' },
