@@ -1,0 +1,30 @@
+# PISO OS V3 — optional Postgres fallback for users without a local Postgres install.
+#
+# Invoke ONLY from this directory:
+#   cd piso-os-v3
+#   docker compose up -d
+#
+# IMPORTANT: This file lives inside piso-os-v3/ on purpose so it does NOT collide
+# with the host repo's docker-compose.yml (MiroFish on ports 3000/5001).
+#
+# If you already have Postgres 16 running locally on :5432 (the documented setup),
+# DO NOT run this — it will conflict on port 5432.
+
+services:
+  piso_os_postgres:
+    image: postgres:16
+    container_name: piso_os_postgres
+    environment:
+      POSTGRES_DB: piso_os
+      POSTGRES_USER: piso_app
+      POSTGRES_PASSWORD: piso_app
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./.pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U piso_app -d piso_os"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
