@@ -147,6 +147,38 @@ function typeFromName(name) {
   return null;
 }
 
+/** Extracts property type from the free-text description block (Salboo).
+ *  Patterns observed:
+ *    "Tipología : Apartamento"
+ *    "Tipologia : Apartamento"
+ *    "MONOAMBIENTE AMOBLADO" (treated as Apartamento)
+ *    word match "Apartamento" / "Casa" / etc. anywhere
+ */
+function typeFromDescription(desc) {
+  const text = coerceString(desc);
+  if (!text) return null;
+  const explicit = text.match(/Tipolog[ií]a\s*:?\s*([A-Za-zÁÉÍÓÚáéíóúñÑ]+)/i);
+  if (explicit) {
+    const t = explicit[1].toLowerCase();
+    if (t.startsWith('apart')) return 'Apartamento';
+    if (t.startsWith('casa')) return 'Casa';
+    if (t.startsWith('local')) return 'Local';
+    if (t.startsWith('terreno')) return 'Terreno';
+    if (t.startsWith('oficina')) return 'Oficina';
+    if (t.startsWith('garaje') || t.startsWith('cochera')) return 'Garaje';
+    if (t.startsWith('mono')) return 'Apartamento';
+  }
+  const lower = text.toLowerCase();
+  if (lower.includes('monoambiente')) return 'Apartamento';
+  if (/\bapartamento\b/.test(lower) || /\bapto\b/.test(lower)) return 'Apartamento';
+  if (/\bcasa\b/.test(lower)) return 'Casa';
+  if (/\blocal\s+comercial\b/.test(lower) || /\blocal\b/.test(lower)) return 'Local';
+  if (/\bterreno\b/.test(lower)) return 'Terreno';
+  if (/\boficina\b/.test(lower)) return 'Oficina';
+  if (/\bgaraje\b/.test(lower) || /\bcochera\b/.test(lower)) return 'Garaje';
+  return null;
+}
+
 function latestFile(dir = DEFAULT_INBOX) {
   if (!fs.existsSync(dir)) return null;
   const files = fs.readdirSync(dir)
@@ -184,10 +216,11 @@ async function parseFile(filePath) {
       const photos = (metaMap.images || [])
         .map((idx) => coerceString(values[idx]))
         .filter(Boolean);
+      const description = coerceString(values[metaMap.description]) || '';
       properties.push({
         id,
         operation: operationFromAvailability(values[metaMap.availability]),
-        type: typeFromName(values[metaMap.name]),
+        type: typeFromName(values[metaMap.name]) || typeFromDescription(description),
         neighborhood: coerceString(values[metaMap.region]) || coerceString(values[metaMap.city]),
         rooms: coerceNumber(values[metaMap.num_beds]),
         bathrooms: coerceNumber(values[metaMap.num_baths]),
@@ -195,7 +228,7 @@ async function parseFile(filePath) {
         price_usd: price.currency === 'USD' ? price.amount : null,
         status: 'activa',
         photos,
-        description: coerceString(values[metaMap.description]) || '',
+        description,
         url: coerceString(values[metaMap.url]),
         name: coerceString(values[metaMap.name]),
       });
