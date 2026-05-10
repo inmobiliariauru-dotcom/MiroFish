@@ -95,8 +95,41 @@ Warnings npm: 2 deprecation notices (uuid@8 transitive de node-pg-migrate, glob@
 | 30 índices creados | `pg_indexes` | incluye GIN sobre `properties.raw`, PKs compuestas, FK indexes |
 | `node --check` en todos los JS | bash loop | 15/15 OK |
 
-## 2026-05-10 — Gate 3 Bloque C: Tokko
-*(pendiente)*
+## 2026-05-10 — Gate 3 Bloque C: Tokko (agentes 01, 02, 05, 07)
+
+### Archivos creados
+| archivo | rol |
+|---|---|
+| `server/env.js` | carga `.env`, valida vars al boot, expone `isMock(integration)` |
+| `server/audit.js` | `logApiCall`, `startAgentRun`, `finishAgentRun`, `recordDecision`, `bumpAgentStatus` (best-effort, nunca crashea callers) |
+| `server/integrations/tokko.js` | cliente axios con audit, `listProperties`, `getProperty`, `asArray` |
+| `server/index.js` | Express bootstrap, CORS estricto (`file://` + `localhost:*`), rutas `/api/health`, `/api/agents`, agentes 01/02/05/07 montados, stubs 03/04/06/08-14 |
+| `server/routes/agents/_base.js` | `runAgent(id, handler)` — aplica shape estandarizado + audit lifecycle |
+| `server/routes/agents/01-tokko-sync.js` | lee Tokko (o mock 128 props) → upsert `ops.properties` |
+| `server/routes/agents/02-inventory-normalizer.js` | lee `ops.properties` → reporta issues por columna |
+| `server/routes/agents/05-pricing.js` | media por (operation, neighborhood, rooms, currency) → `ml.pricing_score` |
+| `server/routes/agents/07-quality.js` | photos + word_count → `ml.quality_score` con blockers TEXT[] |
+
+### Validación end-to-end (sandbox, mock mode)
+| endpoint | resultado | persistencia |
+|---|---|---|
+| `GET /api/health` | `{ok:true, db:up, mocks:[tokko,supermetrics], port:8787}` | n/a |
+| `GET /api/agents` | 14 agentes con `last_run` JOIN | lee de `ops.agents` + `audit.agent_runs` |
+| `GET /api/agent/01/inventory` | mock, 128 props (109 alq + 19 ven), 128 upsert | `ops.properties`: 128 |
+| `GET /api/agent/02/normalized` | ok, 128 reviewed, 0 issues, 118 active | n/a (read-only) |
+| `GET /api/agent/05/pricing` | ok, 99/118 scored (19 sin cohorte): 7 under, 87 fair, 5 over | `ml.pricing_score`: 99 |
+| `GET /api/agent/07/quality` | ok, 118 scored, avg 0.42, 75 < 0.5 | `ml.quality_score`: 118 |
+| stubs 03/04/06/08-14 | shape mock con alerta "Bloque D pendiente" | n/a |
+
+### Audit ledger (`audit.agent_runs`)
+4 rows tras una corrida (01 → 02 → 05 → 07): start/finish/status/summary completos. `ops.agents.last_run_at` se actualiza.
+
+### Reglas duras verificadas
+- Mock mode encendido por falta de `TOKKO_API_KEY` / `SUPERMETRICS_*` (no hay HTTP externo, `audit.api_calls` queda en 0). ✅
+- `ml.pricing_score` y `ml.quality_score` solo se escriben con `applied=false`-equivalente: son scoring derivado, no acción. ✅
+- Cero llamadas mutativas a Tokko, Google Ads o Meta. ✅
+- `node --check` en 9 archivos JS nuevos → 9/9 OK. ✅
+- Server bootea, sirve, y se detiene limpio (SIGTERM cierra pool). ✅
 
 ## 2026-05-10 — Gate 3 Bloque D: Supermetrics
 *(pendiente)*
