@@ -1,0 +1,30 @@
+# PISO OS V3 — local subdir gitignore
+# (root .gitignore already covers .env, but we duplicate for clarity)
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Server runtime cache (regenerated at runtime)
+server/cache/*.json
+!server/cache/.gitkeep
+
+# Postgres data volume (only if user opts into local docker-compose)
+.pgdata/
